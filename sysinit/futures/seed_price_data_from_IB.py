@@ -8,9 +8,14 @@ from sysdata.data_blob import dataBlob
 from sysproduction.data.broker import dataBroker
 from sysproduction.data.prices import updatePrices
 from sysproduction.update_historical_prices import write_merged_prices_for_contract
+from sysinit.futures.ib_seed_gate import should_skip_instrument, mark_instrument_completed
 
 
 def seed_price_data_from_IB(instrument_code):
+    if should_skip_instrument(instrument_code, step="seed-ib"):
+        print(f"Skipping {instrument_code}: already seeded")
+        return
+
     data = dataBlob()
     data_broker = dataBroker(data)
 
@@ -29,6 +34,8 @@ def seed_price_data_from_IB(instrument_code):
         contract_object = futuresContract(instrument_code, date_str)
 
         seed_price_data_for_contract(data=data, contract_object=contract_object)
+
+    mark_instrument_completed(instrument_code, step="seed-ib")
 
 
 def seed_price_data_for_contract(data: dataBlob, contract_object: futuresContract):

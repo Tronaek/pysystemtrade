@@ -72,6 +72,48 @@ class ibPriceClient(ibContractsClient):
 
         return price_data
 
+    def broker_get_historical_futures_data_for_contract_ending_at(
+        self,
+        contract_object_with_ib_broker_config,
+        bar_freq: Frequency = DAILY_PRICE_FREQ,
+        end_datetime: str = "",
+        whatToShow="TRADES",
+        allow_expired=False,
+    ) -> pd.DataFrame:
+        """Like broker_get_historical_futures_data_for_contract but with a
+        custom endDateTime so callers can walk backward through history in
+        chunks."""
+        try:
+            ibcontract = self.ib_futures_contract(
+                contract_object_with_ib_broker_config, allow_expired=allow_expired
+            )
+        except missingContract:
+            self.log.warning(
+                "Can't resolve IB contract %s"
+                % str(contract_object_with_ib_broker_config)
+            )
+            raise missingData
+
+        try:
+            barSizeSetting, durationStr = self._get_barsize_and_duration_from_frequency(
+                bar_freq
+            )
+        except Exception as exception:
+            self.log.warning(exception)
+            raise missingData
+
+        price_data_raw = self._ib_get_historical_data_of_duration_and_barSize(
+            ibcontract,
+            durationStr=durationStr,
+            barSizeSetting=barSizeSetting,
+            whatToShow=whatToShow,
+            endDateTime=end_datetime,
+        )
+
+        price_data_as_df = self._raw_ib_data_to_df(price_data_raw=price_data_raw)
+        self.log.debug("Log attributes reset", method="clear")
+        return price_data_as_df
+
     def get_ticker_object_with_BS(
         self,
         contract_object_with_ib_data: futuresContract,
@@ -264,6 +306,7 @@ class ibPriceClient(ibContractsClient):
         durationStr: str = "1 Y",
         barSizeSetting: str = "1 day",
         whatToShow="TRADES",
+        endDateTime: str = "",
     ) -> pd.DataFrame:
         """
         Returns historical prices for a contract, up to today
@@ -278,7 +321,7 @@ class ibPriceClient(ibContractsClient):
         self.ib.reqMarketDataType(3)
         bars = self.ib.reqHistoricalData(
             ibcontract,
-            endDateTime="",
+            endDateTime=endDateTime,
             durationStr=durationStr,
             barSizeSetting=barSizeSetting,
             whatToShow=whatToShow,
