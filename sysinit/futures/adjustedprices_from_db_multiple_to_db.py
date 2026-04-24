@@ -5,6 +5,7 @@ We then store those adjusted prices in database and/or csv
 
 """
 from syscore.constants import arg_not_supplied
+from sysdata.config.configdata import get_csv_step_directory
 from sysdata.csv.csv_adjusted_prices import csvFuturesAdjustedPricesData
 
 from sysobjects.adjusted_prices import futuresAdjustedPrices
@@ -15,6 +16,9 @@ diag_prices = diagPrices()
 
 
 def _get_data_inputs(csv_adj_data_path):
+    if csv_adj_data_path is arg_not_supplied:
+        csv_adj_data_path = get_csv_step_directory("adjusted_prices")
+
     db_multiple_prices = diag_prices.db_futures_multiple_prices_data
     db_adjusted_prices = diag_prices.db_futures_adjusted_prices_data
     csv_adjusted_prices = csvFuturesAdjustedPricesData(csv_adj_data_path)

@@ -9,6 +9,7 @@ We then store those multiple prices in: (depending on options)
 - arctic
 - .csv
 """
+
 from syscore.constants import arg_not_supplied
 from sysobjects.dict_of_futures_per_contract_prices import (
     dictFuturesContractFinalPrices,
@@ -21,6 +22,7 @@ from sysproduction.data.prices import diagPrices
 from sysobjects.rolls import rollParameters, contractDateWithRollParameters
 from sysobjects.contract_dates_and_expiries import contractDate
 
+from sysdata.config.configdata import get_csv_step_directory
 from sysdata.csv.csv_roll_calendars import csvRollCalendarData
 from sysdata.csv.csv_multiple_prices import csvFuturesMultiplePricesData
 from sysdata.csv.csv_roll_parameters import csvRollParametersData
@@ -32,6 +34,11 @@ diag_prices = diagPrices()
 
 
 def _get_data_inputs(csv_roll_data_path, csv_multiple_data_path):
+    if csv_roll_data_path is arg_not_supplied:
+        csv_roll_data_path = get_csv_step_directory("roll_calendars")
+    if csv_multiple_data_path is arg_not_supplied:
+        csv_multiple_data_path = get_csv_step_directory("multiple_prices")
+
     csv_roll_calendars = csvRollCalendarData(csv_roll_data_path)
     db_individual_futures_prices = diag_prices.db_futures_contract_price_data
     db_multiple_prices = diag_prices.db_futures_multiple_prices_data
@@ -49,7 +56,7 @@ def process_multiple_prices_all_instruments(
     csv_multiple_data_path=arg_not_supplied,
     csv_roll_data_path=arg_not_supplied,
     ADD_TO_DB=True,
-    ADD_TO_CSV=False,
+    ADD_TO_CSV=True,
 ):
     (
         _not_used1,
@@ -81,7 +88,7 @@ def process_multiple_prices_single_instrument(
     roll_parameters=arg_not_supplied,
     roll_calendar=arg_not_supplied,
     ADD_TO_DB=True,
-    ADD_TO_CSV=False,
+    ADD_TO_CSV=True,
 ):
     if target_instrument_code is arg_not_supplied:
         target_instrument_code = instrument_code

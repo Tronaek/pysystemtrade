@@ -12,6 +12,8 @@ trading_rules - a specification of the trading rules for a system
 
 """
 
+from pathlib import Path
+
 import yaml
 
 from syscore.exceptions import missingData
@@ -32,6 +34,16 @@ RESERVED_NAMES = [
     "_default_filename",
     "_private_filename",
 ]
+
+
+def get_csv_step_directory(step_name: str) -> str:
+    private_config = get_private_config_as_dict()
+    csv_directory = private_config.get("csv_directory")
+    if not csv_directory:
+        raise ValueError("Missing csv_directory in private config")
+    output_dir = Path(str(csv_directory)) / step_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return str(output_dir)
 
 
 class Config(object):
