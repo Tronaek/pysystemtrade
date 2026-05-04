@@ -1,5 +1,6 @@
 import datetime
 from syscore.exceptions import fillExceedsTrade
+from sysexecution.orders.base_orders import overFilledOrder
 from sysexecution.orders.named_order_objects import (
     missing_order,
     no_children,
@@ -131,12 +132,27 @@ class stackHandlerForFills(stackHandlerForCompletions):
         total_filled_qty = broker_order_list.total_filled_qty()
         average_fill_price = broker_order_list.average_fill_price()
 
-        self.apply_fills_to_contract_order(
-            contract_order_before_fill=contract_order_before_fill,
-            filled_price=average_fill_price,
-            filled_qty=total_filled_qty,
-            fill_datetime=final_fill_datetime,
-        )
+        try:
+            self.apply_fills_to_contract_order(
+                contract_order_before_fill=contract_order_before_fill,
+                filled_price=average_fill_price,
+                filled_qty=total_filled_qty,
+                fill_datetime=final_fill_datetime,
+            )
+        except overFilledOrder:
+            self.log.critical(
+                "Broker children fills %s exceed contract order trade %s for contract order id %d (%s): "
+                "skipping fill propagation. Manual intervention required."
+                % (
+                    total_filled_qty,
+                    contract_order_before_fill.trade,
+                    contract_order_id,
+                    contract_order_before_fill.key,
+                ),
+                **contract_order_before_fill.log_attributes(),
+                method="temp",
+            )
+            return None
 
     def apply_contract_order_fill_to_database(self, contract_order: contractOrder):
         contract_order_before_fill = self.contract_stack.get_order_with_id_from_stack(
