@@ -68,15 +68,39 @@ trading_rules:
      other_args:
          smooth_days: 90
      forecast_scalar: 30
+  breakout40:
+     function: systems.provided.rules.breakout.breakout
+     data:
+         - "rawdata.get_daily_prices"
+     other_args:
+         lookback: 40
+     forecast_scalar: 0.7037
+  relmomentum40:
+     function: systems.provided.rules.rel_mom.relative_momentum
+     data:
+         - "rawdata.get_cumulative_daily_vol_normalised_returns"
+         - "rawdata.normalised_price_for_asset_class"
+     other_args:
+         horizon: 40
+     forecast_scalar: 117.7794
+  relcarry:
+     function: systems.provided.rules.carry.relative_carry
+     data:
+         - "rawdata.smoothed_carry"
+         - "rawdata.median_carry_for_asset_class"
+     forecast_scalar: 49.4418
 forecast_cap: 20.0
 #
 # forecast combination
 #
 forecast_weights:
-     ewmac16_64: 0.21
-     ewmac32_128: 0.08
-     ewmac64_256: 0.21
-     carry: 0.50
+    ewmac16_64: 0.15
+    ewmac32_128: 0.08
+    ewmac64_256: 0.12
+    carry: 0.35
+    breakout40: 0.10
+    relmomentum40: 0.10
+    relcarry: 0.10
 forecast_div_multiplier: 1.31
 #
 # Capital correction
@@ -107,13 +131,22 @@ rule_groups:
        - ewmac64_256
     carry:
        - carry
+    breakout:
+       - breakout40
+    relative_momentum:
+       - relmomentum40
+    relative_carry:
+       - relcarry
 style_groups:
     trend:
         - ewmac_fast
         - ewmac_medium
         - ewmac_slow
+        - breakout
+        - relative_momentum
     carry:
         - carry
+        - relative_carry
 countries:
     US:
       - SOFR
