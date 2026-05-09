@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from statistics import median
 
 from syscore.constants import arg_not_supplied
@@ -16,6 +18,15 @@ from sysproduction.strategy_code.run_system_classic import (
 REGIME_TREND = "trend"
 REGIME_CARRY = "carry"
 REGIME_RISK_OFF = "risk_off"
+
+TREND_RULES = [
+    "ewmac2_8",
+    "ewmac4_16",
+    "ewmac8_32",
+    "ewmac16_64",
+    "ewmac32_128",
+    "ewmac64_256",
+]
 
 
 # All weights sum to 1.0 and only use rules available in futuresconfig.yaml.
@@ -54,6 +65,8 @@ REGIME_FORECAST_WEIGHTS = {
     },
 }
 
+REGIME_WEIGHT_OVERRIDE_ENV = "DRAGON_REGIME_FORECAST_WEIGHTS_JSON"
+
 
 class runSystemRegimeAware(runSystemClassic):
     # Keep classic buffered writeback semantics.
@@ -80,7 +93,18 @@ class runSystemRegimeAware(runSystemClassic):
         )
 
         regime, trend_strength, vol_percent, carry_strength = _detect_regime(system)
-        system.config.forecast_weights = dict(REGIME_FORECAST_WEIGHTS[regime])
+        all_weights = _resolve_regime_forecast_weights(system)
+
+        # Regime search relies on explicit per-regime fixed weights. If these
+        # estimation flags remain enabled, pysystemtrade will ignore
+        # config.forecast_weights and re-estimate weights/DM instead.
+        system.config.use_forecast_weight_estimates = False
+        system.config.use_forecast_div_mult_estimates = False
+        system.config.forecast_weights = dict(all_weights[regime])
+
+        # Regime detection may populate combForecast cache; clear it so the
+        # selected regime weights are used for the actual backtest calculations.
+        system.cache.delete_items_for_stage("combForecast", delete_protected=True)
 
         data.log.debug(
             "Regime-aware strategy selected regime=%s (trend_strength=%.4f, vol_percent=%.4f, carry_strength=%.4f)"
@@ -88,6 +112,65 @@ class runSystemRegimeAware(runSystemClassic):
         )
 
         return system
+
+
+def _resolve_regime_forecast_weights(system: System) -> dict[str, dict[str, float]]:
+    raw_override = os.environ.get(REGIME_WEIGHT_OVERRIDE_ENV)
+    if raw_override:
+        try:
+            parsed = json.loads(raw_override)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Invalid JSON in {REGIME_WEIGHT_OVERRIDE_ENV}: {exc}"
+            ) from exc
+        return _validated_regime_forecast_weights(parsed)
+
+    config_override = system.config.get_element_or_default(
+        "regime_forecast_weights", arg_not_supplied
+    )
+    if config_override is not arg_not_supplied:
+        return _validated_regime_forecast_weights(config_override)
+
+    return _validated_regime_forecast_weights(REGIME_FORECAST_WEIGHTS)
+
+
+def _validated_regime_forecast_weights(
+    candidate: dict,
+) -> dict[str, dict[str, float]]:
+    required = {REGIME_TREND, REGIME_CARRY, REGIME_RISK_OFF}
+    if not isinstance(candidate, dict):
+        raise ValueError("regime_forecast_weights must be a dict")
+
+    missing = required.difference(candidate.keys())
+    if missing:
+        raise ValueError(
+            "regime_forecast_weights missing regimes: " + ", ".join(sorted(missing))
+        )
+
+    normalized: dict[str, dict[str, float]] = {}
+    for regime_name in sorted(required):
+        regime_weights = candidate.get(regime_name)
+        if not isinstance(regime_weights, dict) or not regime_weights:
+            raise ValueError(f"weights for regime {regime_name} must be a non-empty dict")
+
+        clean_weights = {
+            str(rule_name): float(weight)
+            for rule_name, weight in regime_weights.items()
+            if float(weight) > 0.0
+        }
+        if not clean_weights:
+            raise ValueError(f"weights for regime {regime_name} must include positive values")
+
+        total = sum(clean_weights.values())
+        if total <= 0.0:
+            raise ValueError(f"weights for regime {regime_name} must sum to a positive value")
+
+        normalized[regime_name] = {
+            rule_name: weight / total
+            for rule_name, weight in clean_weights.items()
+        }
+
+    return normalized
 
 
 def _detect_regime(system: System) -> tuple[str, float, float, float]:
@@ -100,9 +183,7 @@ def _detect_regime(system: System) -> tuple[str, float, float, float]:
     carry_samples: list[float] = []
 
     for instrument_code in instrument_list:
-        trend_value = _latest_float_from_series(
-            system.combForecast.get_combined_forecast(instrument_code)
-        )
+        trend_value = _trend_strength_from_capped_rules(system, instrument_code)
         if trend_value is not None:
             trend_samples.append(abs(trend_value))
 
@@ -129,6 +210,27 @@ def _detect_regime(system: System) -> tuple[str, float, float, float]:
         return REGIME_CARRY, trend_strength, vol_percent, carry_strength
 
     return REGIME_TREND, trend_strength, vol_percent, carry_strength
+
+
+def _trend_strength_from_capped_rules(system: System, instrument_code: str) -> float | None:
+    samples: list[float] = []
+    for rule_name in TREND_RULES:
+        try:
+            forecast_series = system.forecastScaleCap.get_capped_forecast(
+                instrument_code,
+                rule_name,
+            )
+        except Exception:
+            continue
+
+        latest_value = _latest_float_from_series(forecast_series)
+        if latest_value is not None:
+            samples.append(abs(latest_value))
+
+    if not samples:
+        return None
+
+    return float(median(samples))
 
 
 def _latest_float_from_series(value) -> float | None:
