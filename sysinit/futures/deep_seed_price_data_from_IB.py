@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime
 import pandas as pd
 
-from syscore.exceptions import missingData
+from syscore.exceptions import missingData, missingContract
 from sysbrokers.IB.ib_futures_contract_price_data import futuresContract
 from syscore.dateutils import DAILY_PRICE_FREQ, HOURLY_FREQ, Frequency
 from sysdata.data_blob import dataBlob
@@ -139,7 +139,7 @@ def _deep_seed_contract_at_frequency(
                 end_datetime=end_str,
                 allow_expired=True,
             )
-        except missingData:
+        except (missingData, missingContract):
             data.log.debug(
                 f"No more data from IB for {contract_object} @ {frequency}",
                 **log_attrs,
