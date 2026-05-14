@@ -1,4 +1,5 @@
 import copy
+import time
 
 from sysbrokers.IB.ib_connection import connectionIB
 from syscore.objects import get_class_name
@@ -9,6 +10,10 @@ from sysdata.mongodb.mongo_connection import mongoDb
 from syslogging.logger import *
 from sysdata.mongodb.mongo_IB_client_id import mongoIbBrokerClientIdData
 from sysdata.parquet.parquet_access import ParquetAccess
+
+
+IB_CONNECTION_MAX_ATTEMPTS = 6
+IB_CONNECTION_RETRY_SECONDS = 5
 
 
 class dataBlob(object):
@@ -291,7 +296,6 @@ class dataBlob(object):
         return ib_conn
 
     def _get_new_ib_connection(self) -> connectionIB:
-        # Try this 5 times...
         attempts = 0
         failed_ids = []
         client_id = self._get_next_client_id_for_ib()
@@ -303,12 +307,17 @@ class dataBlob(object):
                 return ib_conn
             except Exception as e:
                 failed_ids.append(client_id)
-                client_id = self._get_next_client_id_for_ib()
                 attempts += 1
-                if attempts > 5:
+                if attempts >= IB_CONNECTION_MAX_ATTEMPTS:
                     for id in failed_ids:
                         self.db_ib_broker_client_id.release_clientid(id)
                     raise e
+                self.log.warning(
+                    f"IB connection attempt {attempts}/{IB_CONNECTION_MAX_ATTEMPTS} failed: {e}. "
+                    f"Retrying in {IB_CONNECTION_RETRY_SECONDS}s"
+                )
+                time.sleep(IB_CONNECTION_RETRY_SECONDS)
+                client_id = self._get_next_client_id_for_ib()
 
     def _get_next_client_id_for_ib(self) -> int:
         ## default to tracking ID through mongo change if required

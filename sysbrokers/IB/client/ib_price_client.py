@@ -319,16 +319,22 @@ class ibPriceClient(ibContractsClient):
 
         ## If live data is available a request for delayed data would be ignored by TWS.
         self.ib.reqMarketDataType(3)
-        bars = self.ib.reqHistoricalData(
-            ibcontract,
-            endDateTime=endDateTime,
-            durationStr=durationStr,
-            barSizeSetting=barSizeSetting,
-            whatToShow=whatToShow,
-            useRTH=True,
-            formatDate=2,
-            timeout=TIMEOUT_SECONDS_ON_HISTORICAL_DATA,
-        )
+        try:
+            bars = self.ib.reqHistoricalData(
+                ibcontract,
+                endDateTime=endDateTime,
+                durationStr=durationStr,
+                barSizeSetting=barSizeSetting,
+                whatToShow=whatToShow,
+                useRTH=True,
+                formatDate=2,
+                timeout=TIMEOUT_SECONDS_ON_HISTORICAL_DATA,
+            )
+        except ConnectionError as error:
+            self.log.warning(
+                f"Socket disconnect while requesting IB historical data: {error}"
+            )
+            raise missingData
         df = util.df(bars)
 
         self.last_historic_price_calltime = datetime.datetime.now()

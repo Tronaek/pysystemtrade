@@ -10,6 +10,7 @@ Hourly  : up to DEEP_HOURLY_CHUNKS × 1-month chunks (~12 months extra)
 from __future__ import annotations
 
 import datetime
+import pandas as pd
 
 from syscore.exceptions import missingData
 from sysbrokers.IB.ib_futures_contract_price_data import futuresContract
@@ -30,13 +31,20 @@ _IB_DT_FMT = "%Y%m%d %H:%M:%S"
 
 
 def _end_datetime_str(dt: datetime.datetime) -> str:
-    return dt.strftime(_IB_DT_FMT)
+    dt_utc = _as_utc(dt)
+    return f"{dt_utc.strftime(_IB_DT_FMT)} UTC"
+
+
+def _as_utc(dt: datetime.datetime) -> datetime.datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=datetime.UTC)
+    return dt.astimezone(datetime.UTC)
 
 
 def _earliest_timestamp(prices: futuresContractPrices) -> datetime.datetime | None:
     if len(prices) == 0:
         return None
-    return prices.index.min().to_pydatetime()
+    return _as_utc(prices.index.min().to_pydatetime())
 
 
 def deep_seed_price_data_from_IB(instrument_code: str) -> None:
@@ -104,12 +112,12 @@ def _deep_seed_contract_at_frequency(
     # Start just before the earliest data we already have; fall back to now.
     anchor = _earliest_timestamp(existing)
     if anchor is None:
-        anchor = datetime.datetime.utcnow()
+        anchor = datetime.datetime.now(datetime.UTC)
 
     end_dt = anchor
     accumulated = existing
 
-    ib_client = data_broker.data.ib_conn
+    ib_client = data_broker.broker_futures_contract_price_data.ib_client
 
     for chunk_idx in range(chunks):
         end_str = _end_datetime_str(end_dt)
@@ -120,7 +128,7 @@ def _deep_seed_contract_at_frequency(
 
         try:
             contract_with_ib = (
-                data_broker.data.broker_futures_contract_price_data
+                data_broker.data.broker_futures_contract_price
                 .futures_contract_data.get_contract_object_with_IB_data(
                     contract_object, allow_expired=True
                 )
@@ -148,9 +156,11 @@ def _deep_seed_contract_at_frequency(
             break
 
         # Merge: chunk is older data, existing is newer; combine and deduplicate.
-        combined = futuresContractPrices(
-            chunk_prices.append(accumulated).sort_index()
-        )
+        merge_frames = [frame for frame in (chunk_prices, accumulated) if len(frame) > 0]
+        if len(merge_frames) == 1:
+            combined = futuresContractPrices(merge_frames[0].sort_index())
+        else:
+            combined = futuresContractPrices(pd.concat(merge_frames).sort_index())
         combined = futuresContractPrices(combined[~combined.index.duplicated(keep="last")])
         accumulated = combined
 
