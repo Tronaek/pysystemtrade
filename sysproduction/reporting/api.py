@@ -338,6 +338,14 @@ class reportingApi(object):
             rows.append(dict(included=inc, excluded=exc, correlation=corr_value))
 
         configured_correlations = pd.DataFrame(rows)
+        
+        # Handle empty case: no configured duplicates
+        if len(configured_correlations) == 0:
+            table_corr = table(
+                "Potenially uncorrelated configured duplicates", configured_correlations
+            )
+            return table_corr
+        
         configured_correlations = configured_correlations[
             configured_correlations.correlation < self._min_correlation
         ].sort_values("correlation", ascending=False)
@@ -370,7 +378,14 @@ class reportingApi(object):
                 if corr_value >= self._min_correlation:
                     rows.append(dict(first=inst1, second=inst2, correlation=corr_value))
 
-        potential_duplicates = pd.DataFrame(rows).sort_values(
+        potential_duplicates = pd.DataFrame(rows)
+        
+        # Handle empty case: no unconfigured duplicates found
+        if len(potential_duplicates) == 0:
+            table_corr = table("Potentially unconfigured duplicates", potential_duplicates)
+            return table_corr
+        
+        potential_duplicates = potential_duplicates.sort_values(
             "correlation", ascending=False
         )
         table_corr = table("Potentially unconfigured duplicates", potential_duplicates)

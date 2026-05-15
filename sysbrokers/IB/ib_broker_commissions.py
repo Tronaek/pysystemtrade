@@ -57,11 +57,19 @@ class ibFuturesContractCommissionData(brokerFuturesContractCommissionData):
 
         timer = quickTimer(5)
         comm_currency_value = currencyValue(currency="", value=0)
+        last_exception = None
         while timer.unfinished:
             try:
                 comm_currency_value = get_commission_and_currency_from_ib_order(order)
-            except:
+            except Exception as exception:
+                last_exception = exception
                 continue
+
+        if comm_currency_value.currency == "":
+            self.log.warning(
+                "Unable to retrieve IB commission currency/value for %s %s within timeout; last error: %s"
+                % (instrument_code, contract_date, str(last_exception))
+            )
 
         return comm_currency_value
 

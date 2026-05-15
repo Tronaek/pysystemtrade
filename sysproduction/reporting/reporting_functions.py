@@ -246,9 +246,11 @@ def email_report(
 ):
     if parsed_report.contains_pdf:
         send_production_mail_msg_attachment(
+            data=data,
             body="Report attached",
             subject=report_config.title,
             filename=parsed_report.pdf_filename,
+            email_is_report=True,
         )
     else:
         send_production_mail_msg(

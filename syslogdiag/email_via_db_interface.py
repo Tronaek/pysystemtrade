@@ -11,12 +11,28 @@ from syscore.fileutils import resolve_path_and_filename_for_package
 from syscore.interactive.display import landing_strip
 
 
-def send_production_mail_msg_attachment(body: str, subject: str, filename: str):
+def send_production_mail_msg_attachment(
+    data, body: str, subject: str, filename: str, email_is_report=False
+):
     """
-    Doesn't check, doesn't store
+    Sends a report attachment using the same gating and fail-safe behaviour
+    as plain text report emails.
     """
 
-    send_mail_pdfs(body, subject=subject, filelist=[filename])
+    send_email = can_we_send_this_email_now(
+        data, subject, email_is_report=email_is_report
+    )
+
+    if send_email:
+        send_email_and_record_date_or_store_on_fail(
+            data,
+            body,
+            subject,
+            email_is_report=email_is_report,
+            filelist=[filename],
+        )
+    else:
+        store_and_warn_email(data, body, subject, email_is_report=email_is_report)
 
 
 def send_production_mail_msg(data, body: str, subject: str, email_is_report=False):
@@ -41,10 +57,17 @@ def send_production_mail_msg(data, body: str, subject: str, email_is_report=Fals
 
 
 def send_email_and_record_date_or_store_on_fail(
-    data, body: str, subject: str, email_is_report: bool = False
+    data,
+    body: str,
+    subject: str,
+    email_is_report: bool = False,
+    filelist=None,
 ):
     try:
-        send_mail_msg(body, subject)
+        if filelist is None:
+            send_mail_msg(body, subject)
+        else:
+            send_mail_pdfs(body, subject=subject, filelist=filelist)
         record_date_of_email_send(data, subject)
         data.log.debug("Sent email subject %s" % subject)
     except Exception as e:

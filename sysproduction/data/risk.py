@@ -14,7 +14,10 @@ from sysproduction.data.prices import (
     get_current_price_series,
 )
 from sysproduction.data.capital import capital_for_strategy
-from sysquant.estimators.correlations import correlationEstimate
+from sysquant.estimators.correlations import (
+    correlationEstimate,
+    create_boring_corr_matrix,
+)
 from sysquant.estimators.covariance import (
     covarianceEstimate,
     covariance_from_stdev_and_correlation,
@@ -49,13 +52,24 @@ def get_correlation_matrix_for_instrument_returns(
     list_of_instruments: list,
     passed_correlation_estimation_parameters: dict = arg_not_supplied,
 ) -> correlationEstimate:
-    list_of_correlations = _replicate_creation_of_correlation_list_in_sim(
-        data,
-        list_of_instruments,
-        passed_correlation_estimation_parameters=passed_correlation_estimation_parameters,
-    )
+    if len(list_of_instruments) == 0:
+        return correlationEstimate(np.empty((0, 0)), columns=[])
 
-    correlation_matrix = list_of_correlations.most_recent_correlation_before_date()
+    try:
+        list_of_correlations = _replicate_creation_of_correlation_list_in_sim(
+            data,
+            list_of_instruments,
+            passed_correlation_estimation_parameters=passed_correlation_estimation_parameters,
+        )
+
+        correlation_matrix = (
+            list_of_correlations.most_recent_correlation_before_date()
+        )
+    except Exception:
+        # Keep reporting/risk flows running when returns data is empty or too sparse.
+        correlation_matrix = create_boring_corr_matrix(
+            len(list_of_instruments), columns=list_of_instruments, offdiag=0.0
+        )
 
     return correlation_matrix
 
