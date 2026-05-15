@@ -63,6 +63,12 @@ def dynamic_system(
     if base_currency is not arg_not_supplied:
         config.base_currency = base_currency
 
+    # Dynamically set start_date if not already configured: use the minimum across all instruments
+    from sysproduction.strategy_code.run_system_classic import (
+        _apply_minimum_instrument_start_date_to_config,
+    )
+    _apply_minimum_instrument_start_date_to_config(config, sim_data, log)
+
     system = futures_system(data=sim_data, config=config)
     system._log = log
 

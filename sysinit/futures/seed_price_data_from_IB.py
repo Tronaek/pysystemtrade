@@ -12,16 +12,21 @@ from sysinit.futures.ib_seed_gate import should_skip_instrument, mark_instrument
 
 
 def seed_price_data_from_IB(instrument_code):
-    if should_skip_instrument(instrument_code, step="seed-ib"):
-        print(f"Skipping {instrument_code}: already seeded")
-        return
-
     data = dataBlob()
     data_broker = dataBroker(data)
 
     list_of_contracts = data_broker.get_list_of_contract_dates_for_instrument_code(
         instrument_code, allow_expired=True
     )
+
+    if should_skip_instrument(
+        instrument_code,
+        step="seed-ib",
+        data=data,
+        list_of_contracts=list_of_contracts,
+    ):
+        print(f"Skipping {instrument_code}: lookback target already covered")
+        return
 
     ## This returns yyyymmdd strings, where we have the actual expiry date
 

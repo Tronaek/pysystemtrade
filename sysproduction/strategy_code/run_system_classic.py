@@ -137,10 +137,82 @@ def production_classic_futures_system(
     if base_currency is not arg_not_supplied:
         config.base_currency = base_currency
 
+    # Dynamically set start_date if not already configured: use the minimum across all instruments
+    _apply_minimum_instrument_start_date_to_config(config, sim_data, log)
+
     system = futures_system(data=sim_data, config=config)
     system._log = log
 
     return system
+
+
+def _apply_minimum_instrument_start_date_to_config(
+    config: Config, sim_data, log
+) -> None:
+    """
+    Compute the earliest available start date across all instruments in config,
+    and set config.start_date if not already explicitly configured.
+    
+    This ensures analysis only runs over periods where all instruments have data,
+    avoiding early-window biases from staggered instrument start dates.
+    """
+    # If start_date is already explicitly set in config, respect it
+    if hasattr(config, "start_date"):
+        existing_start_date = getattr(config, "start_date", None)
+        if existing_start_date is not None:
+            log.debug(
+                "Keeping explicitly configured start_date: %s" % existing_start_date
+            )
+            return
+
+    try:
+        instrument_list = config.instrument_weights.keys()
+    except (AttributeError, KeyError):
+        # No instruments configured, skip dynamic start_date
+        log.debug(
+            "No instrument_weights in config; skipping dynamic start_date computation"
+        )
+        return
+
+    if not instrument_list:
+        return
+
+    min_start_date = None
+    for instrument_code in instrument_list:
+        try:
+            prices = sim_data.get_raw_price(instrument_code)
+            if len(prices) > 0:
+                instrument_start = prices.index[0]
+                if min_start_date is None or instrument_start > min_start_date:
+                    min_start_date = instrument_start
+                log.debug(
+                    "Instrument %s available from %s"
+                    % (instrument_code, instrument_start)
+                )
+            else:
+                log.warning(
+                    "Instrument %s has no price data available" % instrument_code
+                )
+        except Exception as e:
+            log.warning(
+                "Could not determine start date for instrument %s: %s"
+                % (instrument_code, str(e))
+            )
+
+    if min_start_date is not None:
+        # Convert to midnight datetime if it's a date object
+        if not isinstance(min_start_date, datetime.datetime):
+            min_start_date = datetime.datetime.combine(min_start_date, datetime.time())
+        
+        config.start_date = min_start_date
+        log.info(
+            "Dynamically set analysis start_date to %s (latest earliest instrument start)"
+            % min_start_date
+        )
+    else:
+        log.warning(
+            "Could not determine minimum instrument start date; start_date not set"
+        )
 
 
 def updated_buffered_positions(data: dataBlob, strategy_name: str, system: System):

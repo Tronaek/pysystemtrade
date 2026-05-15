@@ -48,16 +48,21 @@ def _earliest_timestamp(prices: futuresContractPrices) -> datetime.datetime | No
 
 
 def deep_seed_price_data_from_IB(instrument_code: str) -> None:
-    if should_skip_instrument(instrument_code, step="deep-ib"):
-        print(f"Skipping {instrument_code}: already deep-seeded")
-        return
-
     data = dataBlob()
     data_broker = dataBroker(data)
 
     list_of_contracts = data_broker.get_list_of_contract_dates_for_instrument_code(
         instrument_code, allow_expired=True
     )
+
+    if should_skip_instrument(
+        instrument_code,
+        step="deep-ib",
+        data=data,
+        list_of_contracts=list_of_contracts,
+    ):
+        print(f"Skipping {instrument_code}: deep lookback target already covered")
+        return
 
     for contract_date in list_of_contracts:
         date_str = contract_date[:6]
