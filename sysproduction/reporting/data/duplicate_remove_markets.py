@@ -432,7 +432,33 @@ def get_data_for_markets(data, exclude_instruments: list = arg_not_supplied):
         data, only_held_instruments=False, exclude_instruments=exclude_instruments
     )
 
+    include_instruments = get_reporting_include_instruments(data)
+    if include_instruments:
+        SR_costs = _filter_df_to_instruments(SR_costs, include_instruments)
+        liquidity_data = _filter_df_to_instruments(liquidity_data, include_instruments)
+        risk_data = _filter_df_to_instruments(risk_data, include_instruments)
+
     return SR_costs, liquidity_data, risk_data
+
+
+def get_reporting_include_instruments(data) -> list[str]:
+    production_config = data.config
+    include_lists = production_config.get_element_or_default("include_instrument_lists", {})
+    if not isinstance(include_lists, dict):
+        return []
+
+    include_instruments = include_lists.get("reporting_instruments", [])
+    if not isinstance(include_instruments, list):
+        return []
+
+    return [str(instrument).strip() for instrument in include_instruments if str(instrument).strip()]
+
+
+def _filter_df_to_instruments(df: pd.DataFrame, instruments: list[str]) -> pd.DataFrame:
+    keep = [instrument for instrument in instruments if instrument in df.index]
+    if not keep:
+        return df.iloc[0:0].copy()
+    return df.loc[keep]
 
 
 def get_ignored_instruments(data) -> list:
