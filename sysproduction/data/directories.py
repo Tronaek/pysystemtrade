@@ -27,7 +27,7 @@ def get_parquet_backup_directory():
 
 
 def get_csv_dump_dir():
-    ans = production_config.get_element("csv_backup_directory")
+    ans = production_config.get_element("csv_directory")
     return get_resolved_pathname(ans)
 
 

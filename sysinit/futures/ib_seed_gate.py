@@ -44,9 +44,9 @@ def _lookback_targets_by_step(step: str) -> dict[str, datetime.datetime]:
     now = datetime.datetime.now(datetime.UTC)
 
     if step == "deep-ib":
-        # Deep seed walks up to 10y of daily and 12m of hourly history.
+        # Deep seed walks up to 10y for both daily and hourly history.
         return {
-            "hourly": now - datetime.timedelta(days=30 * 12),
+            "hourly": now - datetime.timedelta(days=365),
             "daily": now - datetime.timedelta(days=365 * 10),
         }
 
@@ -57,6 +57,43 @@ def _lookback_targets_by_step(step: str) -> dict[str, datetime.datetime]:
     }
 
 
+def _adaptive_deep_daily_target(
+    *,
+    now: datetime.datetime,
+    list_of_contracts: list[str],
+) -> datetime.datetime:
+    """Return the deep daily target adjusted for available contract horizon.
+
+    Some markets expose only a relatively recent expired-contract set via IB,
+    and older contracts may still only contain ~1-3 years of daily history.
+    In that case, a fixed 10y requirement is impossible and causes repeat runs.
+
+    We cap the requirement at the newer of:
+    - now - 10 years
+    - (oldest available contract month) - 2 years
+    """
+    base_target = now - datetime.timedelta(days=365 * 10)
+
+    earliest_contract_month: datetime.datetime | None = None
+    for contract in list_of_contracts:
+        try:
+            yyyymm = contract[:6]
+            contract_month = datetime.datetime.strptime(yyyymm, "%Y%m").replace(
+                tzinfo=datetime.UTC
+            )
+        except Exception:
+            continue
+
+        if earliest_contract_month is None or contract_month < earliest_contract_month:
+            earliest_contract_month = contract_month
+
+    if earliest_contract_month is None:
+        return base_target
+
+    contract_horizon_target = earliest_contract_month - datetime.timedelta(days=365 * 2)
+    return max(base_target, contract_horizon_target)
+
+
 def _get_earliest_by_frequency(
     *,
     data,
@@ -65,17 +102,18 @@ def _get_earliest_by_frequency(
 ) -> dict[str, datetime.datetime | None]:
     from sysbrokers.IB.ib_futures_contract_price_data import futuresContract
     from syscore.dateutils import DAILY_PRICE_FREQ, HOURLY_FREQ
-    from sysproduction.data.prices import updatePrices
+    from sysproduction.data.prices import diagPrices
 
     earliest = {"hourly": None, "daily": None}
-    update_prices = updatePrices(data)
+    diag_prices = diagPrices(data)
 
     for contract_date in list_of_contracts:
         contract = futuresContract(instrument, contract_date[:6])
         for name, frequency in (("hourly", HOURLY_FREQ), ("daily", DAILY_PRICE_FREQ)):
             try:
-                prices = update_prices.get_prices_for_contract_object_at_frequency(
-                    contract_object=contract, frequency=frequency
+                prices = diag_prices.get_prices_at_frequency_for_contract_object(
+                    contract_object=contract,
+                    frequency=frequency,
                 )
             except Exception:
                 continue
@@ -104,7 +142,16 @@ def _meets_lookback_targets(
     )
     targets = _lookback_targets_by_step(step)
 
-    # Both frequencies need to satisfy the target for the step.
+    if step == "deep-ib":
+        # Deep requires both frequencies to satisfy the 10y target.
+        return (
+            earliest["hourly"] is not None
+            and earliest["daily"] is not None
+            and earliest["hourly"] <= targets["hourly"]
+            and earliest["daily"] <= targets["daily"]
+        )
+
+    # Seed requires both frequencies to satisfy the target window.
     return (
         earliest["hourly"] is not None
         and earliest["daily"] is not None

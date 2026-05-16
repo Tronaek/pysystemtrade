@@ -5,7 +5,7 @@ now), this module walks backward in time from the earliest data already stored,
 fetching additional chunks until IB returns no more data.
 
 Daily   : up to DEEP_DAILY_CHUNKS × 1-year chunks  (~10 years)
-Hourly  : up to DEEP_HOURLY_CHUNKS × 1-month chunks (~12 months extra)
+Hourly  : up to DEEP_HOURLY_CHUNKS × 1-month chunks (~1 year)
 """
 from __future__ import annotations
 
@@ -17,14 +17,16 @@ from sysbrokers.IB.ib_futures_contract_price_data import futuresContract
 from syscore.dateutils import DAILY_PRICE_FREQ, HOURLY_FREQ, Frequency
 from sysdata.data_blob import dataBlob
 from sysproduction.data.broker import dataBroker
-from sysproduction.data.prices import updatePrices
+from sysproduction.data.prices import updatePrices, diagPrices
 from sysproduction.update_historical_prices import write_merged_prices_for_contract
 from sysobjects.futures_per_contract_prices import futuresContractPrices
 
 from sysinit.futures.ib_seed_gate import should_skip_instrument, mark_instrument_completed
 
 DEEP_DAILY_CHUNKS = 10
-DEEP_HOURLY_CHUNKS = 12
+DEEP_HOURLY_CHUNKS = 120
+DEEP_DAILY_OVERLAP = datetime.timedelta(days=2)
+DEEP_HOURLY_OVERLAP = datetime.timedelta(hours=6)
 
 # IB endDateTime format expected by reqHistoricalData
 _IB_DT_FMT = "%Y%m%d %H:%M:%S"
@@ -45,6 +47,10 @@ def _earliest_timestamp(prices: futuresContractPrices) -> datetime.datetime | No
     if len(prices) == 0:
         return None
     return _as_utc(prices.index.min().to_pydatetime())
+
+
+def _overlap_for_frequency(frequency: Frequency) -> datetime.timedelta:
+    return DEEP_HOURLY_OVERLAP if frequency == HOURLY_FREQ else DEEP_DAILY_OVERLAP
 
 
 def deep_seed_price_data_from_IB(instrument_code: str) -> None:
@@ -100,12 +106,14 @@ def _deep_seed_contract_at_frequency(
     frequency: Frequency,
 ) -> None:
     update_prices = updatePrices(data)
+    diag_prices = diagPrices(data)
     log_attrs = {**contract_object.log_attributes(), "method": "temp"}
 
     # Read whatever is already stored so we can anchor the backward walk.
     try:
-        existing = update_prices.get_prices_for_contract_object_at_frequency(
-            contract_object=contract_object, frequency=frequency
+        existing = diag_prices.get_prices_at_frequency_for_contract_object(
+            contract_object=contract_object,
+            frequency=frequency,
         )
     except Exception:
         existing = futuresContractPrices.create_empty()
@@ -118,9 +126,16 @@ def _deep_seed_contract_at_frequency(
     anchor = _earliest_timestamp(existing)
     if anchor is None:
         anchor = datetime.datetime.now(datetime.UTC)
+        end_dt = anchor
+    else:
+        # On reruns, fetch only one chunk just older than the earliest point.
+        # Include a small overlap to self-heal boundary gaps if a prior run
+        # was interrupted during download/write.
+        end_dt = anchor + _overlap_for_frequency(frequency)
+        chunks = 1
 
-    end_dt = anchor
     accumulated = existing
+    wrote_any_chunk = False
 
     ib_client = data_broker.broker_futures_contract_price_data.ib_client
 
@@ -167,11 +182,24 @@ def _deep_seed_contract_at_frequency(
         else:
             combined = futuresContractPrices(pd.concat(merge_frames).sort_index())
         combined = futuresContractPrices(combined[~combined.index.duplicated(keep="last")])
+
+        if len(combined) <= len(accumulated):
+            # Overlap-only chunk added nothing new.
+            break
+
         accumulated = combined
+
+        # Incrementally persist progress to the same parquet target.
+        update_prices.overwrite_prices_at_frequency_for_contract(
+            contract_object=contract_object,
+            frequency=frequency,
+            new_prices=accumulated,
+        )
+        wrote_any_chunk = True
 
         end_dt = new_earliest - datetime.timedelta(seconds=1)
 
-    if len(accumulated) > len(existing):
+    if wrote_any_chunk:
         update_prices.overwrite_prices_at_frequency_for_contract(
             contract_object=contract_object,
             frequency=frequency,

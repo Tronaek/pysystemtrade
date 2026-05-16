@@ -1,4 +1,5 @@
 import os
+import shlex
 import pandas as pd
 
 from syscore.exceptions import missingData
@@ -530,10 +531,13 @@ def backup_contract_data(data):
 
 
 def backup_csv_dump(data):
-    source_path = get_csv_dump_dir()
-    destination_path = get_csv_backup_directory()
+    source_path = os.path.realpath(get_csv_dump_dir())
+    destination_path = os.path.realpath(get_csv_backup_directory())
     data.log.debug("Copy from %s to %s" % (source_path, destination_path))
-    os.system("rsync -av %s %s" % (source_path, destination_path))
+
+    source_arg = source_path.rstrip(os.sep) + os.sep
+    destination_arg = destination_path.rstrip(os.sep) + os.sep
+    os.system("rsync -av %s %s" % (shlex.quote(source_arg), shlex.quote(destination_arg)))
 
 
 if __name__ == "__main__":
