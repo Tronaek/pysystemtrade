@@ -187,7 +187,7 @@ class dataForObjectiveInstance:
     @property
     def maximum_position_weights(self) -> portfolioWeights:
         return get_weights_given_positions(
-            self.previous_positions, self.per_contract_value
+            self.maximum_position_contracts, self.per_contract_value
         )
 
     @property
