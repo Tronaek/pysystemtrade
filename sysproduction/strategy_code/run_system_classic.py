@@ -13,6 +13,10 @@ from syscore.constants import arg_not_supplied
 from syscore.exceptions import missingData
 
 from sysdata.config.configdata import Config
+from sysdata.config.instruments import (
+    get_duplicate_list_of_instruments_to_remove_from_config,
+    get_list_of_ignored_instruments_in_config,
+)
 from sysdata.data_blob import dataBlob
 
 from sysobjects.production.optimal_positions import (
@@ -175,6 +179,24 @@ def _apply_minimum_instrument_start_date_to_config(
         return
 
     if not instrument_list:
+        return
+
+    available_instruments = set(sim_data.get_instrument_list())
+    instruments_to_remove = set(
+        get_duplicate_list_of_instruments_to_remove_from_config(config)
+    )
+    instruments_to_remove.update(get_list_of_ignored_instruments_in_config(config))
+    instrument_list = [
+        instrument_code
+        for instrument_code in instrument_list
+        if instrument_code in available_instruments
+        and instrument_code not in instruments_to_remove
+    ]
+
+    if not instrument_list:
+        log.warning(
+            "No configured instruments are available in sim data; start_date not set"
+        )
         return
 
     min_start_date = None

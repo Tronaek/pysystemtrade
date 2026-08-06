@@ -146,6 +146,7 @@ class ibBrokerOrder(brokerOrder):
             contract_id_list,
             total_qty,
             fill=fill,
+            active=extracted_trade_data.active,
             order_type=order_type,
             limit_price=limit_price,
             filled_price=fill_price,

@@ -373,6 +373,9 @@ class brokerOrder(Order):
         self.algo_comment = matched_broker_order.algo_comment
         self.leg_filled_price = matched_broker_order.leg_filled_price
 
+        if not matched_broker_order.active:
+            self.change_trade_qty_to_filled_qty()
+
         return success
 
 

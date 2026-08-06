@@ -1,6 +1,8 @@
 import datetime
+from copy import copy
 from syscore.exceptions import fillExceedsTrade
 from sysexecution.orders.base_orders import overFilledOrder
+from sysexecution.order_stacks.order_stack import missingOrder
 from sysexecution.orders.named_order_objects import (
     missing_order,
     no_children,
@@ -56,6 +58,23 @@ class stackHandlerForFills(stackHandlerForCompletions):
         )
 
         if matched_broker_order is missing_order:
+            # If the broker no longer has the order (or reports it cancelled),
+            # retire the stale stack child instead of endlessly retrying fills.
+            if self._broker_order_is_terminal(data_broker, db_broker_order):
+                terminal_broker_order = copy(db_broker_order)
+                terminal_broker_order._active = False
+                self.apply_broker_order_fills_to_database(
+                    broker_order_id=broker_order_id,
+                    broker_order=terminal_broker_order,
+                )
+                self.log.warning(
+                    "Order in database %s is no longer active at broker; marked complete"
+                    % db_broker_order,
+                    **db_broker_order.log_attributes(),
+                    method="temp",
+                )
+                return None
+
             self.log.warning(
                 "Order in database %s does not match any broker orders: can't fill"
                 % db_broker_order,
@@ -89,7 +108,13 @@ class stackHandlerForFills(stackHandlerForCompletions):
             )
             return None
 
-        contract_order_id = broker_order.parent
+        # Parent linkage should come from our stack record, not the broker view.
+        # Broker-returned orders may not include local parent/order ids.
+        db_broker_order = self.broker_stack.get_order_with_id_from_stack(broker_order_id)
+        if db_broker_order is missing_order:
+            contract_order_id = broker_order.parent
+        else:
+            contract_order_id = db_broker_order.parent
 
         if contract_order_id is no_parent:
             self.log.error(
@@ -101,6 +126,16 @@ class stackHandlerForFills(stackHandlerForCompletions):
         else:
             # pass broker fills upwards
             self.apply_broker_fills_to_contract_order(contract_order_id)
+
+    def _broker_order_is_terminal(
+        self, data_broker: dataBroker, db_broker_order: brokerOrder
+    ) -> bool:
+        try:
+            return data_broker.check_order_is_cancelled(db_broker_order)
+        except missingOrder:
+            # Consistent with cancel flow: missing control object usually means
+            # IB no longer tracks this order in its open-order set.
+            return True
 
     def pass_fills_from_broker_up_to_contract(self):
         list_of_contract_order_ids = self.contract_stack.get_list_of_order_ids()

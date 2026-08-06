@@ -57,9 +57,17 @@ def deep_seed_price_data_from_IB(instrument_code: str) -> None:
     data = dataBlob()
     data_broker = dataBroker(data)
 
-    list_of_contracts = data_broker.get_list_of_contract_dates_for_instrument_code(
-        instrument_code, allow_expired=True
-    )
+    try:
+        list_of_contracts = data_broker.get_list_of_contract_dates_for_instrument_code(
+            instrument_code, allow_expired=True
+        )
+    except (missingData, missingContract):
+        data.log.warning(
+            f"Skipping {instrument_code}: IB contract definition could not be resolved",
+            method="temp",
+        )
+        mark_instrument_completed(instrument_code, step="deep-ib")
+        return
 
     if should_skip_instrument(
         instrument_code,

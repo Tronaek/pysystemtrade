@@ -9,6 +9,9 @@ import datetime
 from pathlib import Path
 
 
+_LOOKBACK_TOLERANCE = datetime.timedelta(days=1)
+
+
 def _parquet_store() -> Path:
     from sysdata.config.production_config import get_production_config
 
@@ -142,21 +145,27 @@ def _meets_lookback_targets(
     )
     targets = _lookback_targets_by_step(step)
 
+    # Historical bars are session-aligned and can land hours after an exact
+    # "now - window" cutoff. Allow a small tolerance to avoid repeat reseeding
+    # when coverage is effectively complete.
+    hourly_target = targets["hourly"] + _LOOKBACK_TOLERANCE
+    daily_target = targets["daily"] + _LOOKBACK_TOLERANCE
+
     if step == "deep-ib":
         # Deep requires both frequencies to satisfy the 10y target.
         return (
             earliest["hourly"] is not None
             and earliest["daily"] is not None
-            and earliest["hourly"] <= targets["hourly"]
-            and earliest["daily"] <= targets["daily"]
+            and earliest["hourly"] <= hourly_target
+            and earliest["daily"] <= daily_target
         )
 
     # Seed requires both frequencies to satisfy the target window.
     return (
         earliest["hourly"] is not None
         and earliest["daily"] is not None
-        and earliest["hourly"] <= targets["hourly"]
-        and earliest["daily"] <= targets["daily"]
+        and earliest["hourly"] <= hourly_target
+        and earliest["daily"] <= daily_target
     )
 
 

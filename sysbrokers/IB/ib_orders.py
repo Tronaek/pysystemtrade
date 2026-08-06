@@ -507,6 +507,7 @@ def add_trade_info_to_broker_order(
     broker_order: brokerOrder, broker_order_from_trade_object: ibBrokerOrder
 ) -> brokerOrder:
     new_broker_order = copy(broker_order)
+    new_broker_order._active = broker_order_from_trade_object.active
     keys_to_replace = [
         "broker_permid",
         "commission",

@@ -1,4 +1,4 @@
-from syscore.exceptions import missingData
+from syscore.exceptions import missingData, missingContract
 from sysbrokers.IB.ib_futures_contract_price_data import (
     futuresContract,
 )
@@ -15,9 +15,17 @@ def seed_price_data_from_IB(instrument_code):
     data = dataBlob()
     data_broker = dataBroker(data)
 
-    list_of_contracts = data_broker.get_list_of_contract_dates_for_instrument_code(
-        instrument_code, allow_expired=True
-    )
+    try:
+        list_of_contracts = data_broker.get_list_of_contract_dates_for_instrument_code(
+            instrument_code, allow_expired=True
+        )
+    except (missingContract, missingData):
+        data.log.warning(
+            f"Skipping {instrument_code}: IB contract definition could not be resolved",
+            method="temp",
+        )
+        mark_instrument_completed(instrument_code, step="seed-ib")
+        return
 
     if should_skip_instrument(
         instrument_code,
