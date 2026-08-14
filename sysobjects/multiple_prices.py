@@ -79,6 +79,7 @@ class futuresMultiplePrices(pd.DataFrame):
         futuresMultiplePrices,
         roll_calendar,
         dict_of_futures_contract_closing_prices: dictFuturesContractFinalPrices,
+        instrument_code: str | None = None,
     ):
         """
 
@@ -89,7 +90,9 @@ class futuresMultiplePrices(pd.DataFrame):
         """
 
         all_price_data_stack = create_multiple_price_stack_from_raw_data(
-            roll_calendar, dict_of_futures_contract_closing_prices
+            roll_calendar,
+            dict_of_futures_contract_closing_prices,
+            instrument_code=instrument_code,
         )
 
         multiple_prices = futuresMultiplePrices(all_price_data_stack)

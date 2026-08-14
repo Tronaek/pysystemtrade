@@ -8,6 +8,7 @@ from syscore.interactive.progress_bar import progressBar
 
 from sysdata.data_blob import dataBlob
 from sysproduction.data.contracts import dataContracts
+from sysproduction.data.config import get_list_of_reporting_instruments_given_config
 from sysproduction.data.prices import diagPrices
 from sysproduction.reporting.data.risk import get_risk_data_for_instrument
 
@@ -16,6 +17,12 @@ def get_liquidity_data_df(data: dataBlob, exclude_instruments: list = arg_not_su
     diag_prices = diagPrices(data)
 
     instrument_list = diag_prices.get_list_of_instruments_with_contract_prices()
+    reporting_instruments = get_list_of_reporting_instruments_given_config(data.config)
+    if reporting_instruments:
+        reporting_set = set(reporting_instruments)
+        instrument_list = [
+            instrument for instrument in instrument_list if instrument in reporting_set
+        ]
     if exclude_instruments is not arg_not_supplied:
         instrument_list = list_difference(instrument_list, exclude_instruments)
 

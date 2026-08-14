@@ -27,63 +27,17 @@ from sysdata.csv.csv_roll_calendars import csvRollCalendarData
 from sysdata.csv.csv_multiple_prices import csvFuturesMultiplePricesData
 from sysdata.csv.csv_roll_parameters import csvRollParametersData
 from sysinit.futures.build_roll_calendars import adjust_to_price_series
-from sysinit.futures.rollcalendars_from_db_prices_to_csv import (
-    build_and_write_roll_calendar,
-)
 from sysobjects.multiple_prices import futuresMultiplePrices
 
 
 diag_prices = diagPrices()
 
 
-def _get_roll_calendar_with_fallback(
+def _get_roll_calendar(
     instrument_code: str,
     csv_roll_calendars: csvRollCalendarData,
-    db_individual_futures_prices,
 ):
-    try:
-        return csv_roll_calendars.get_roll_calendar(instrument_code)
-    except Exception:
-        print(
-            "Roll calendar missing in %s for %s; attempting to build from DB prices"
-            % (csv_roll_calendars.datapath, instrument_code)
-        )
-
-        try:
-            build_and_write_roll_calendar(
-                instrument_code,
-                output_datapath=csv_roll_calendars.datapath,
-                input_prices=db_individual_futures_prices,
-                check_before_writing=False,
-            )
-            return csv_roll_calendars.get_roll_calendar(instrument_code)
-        except Exception as build_exc:
-            print(
-                "Auto-build failed for %s: %s; trying packaged fallback"
-                % (instrument_code, str(build_exc))
-            )
-
-        packaged_roll_calendars = csvRollCalendarData()
-        if not packaged_roll_calendars.is_code_in_data(instrument_code):
-            raise
-
-        print(
-            "Roll calendar missing in %s for %s; using packaged fallback from %s"
-            % (
-                csv_roll_calendars.datapath,
-                instrument_code,
-                packaged_roll_calendars.datapath,
-            )
-        )
-        roll_calendar = packaged_roll_calendars.get_roll_calendar(instrument_code)
-
-        # Materialize fallback into the working csv step path so later stages
-        # and reruns use a consistent local calendar source.
-        csv_roll_calendars.add_roll_calendar(
-            instrument_code, roll_calendar, ignore_duplication=True
-        )
-
-        return roll_calendar
+    return csv_roll_calendars.get_roll_calendar(instrument_code)
 
 
 def _get_data_inputs(csv_roll_data_path, csv_multiple_data_path):
@@ -160,10 +114,9 @@ def process_multiple_prices_single_instrument(
     )
 
     if roll_calendar is arg_not_supplied:
-        roll_calendar = _get_roll_calendar_with_fallback(
+        roll_calendar = _get_roll_calendar(
             instrument_code=instrument_code,
             csv_roll_calendars=csv_roll_calendars,
-            db_individual_futures_prices=db_individual_futures_prices,
         )
 
     # Add first phantom row so that the last calendar entry won't be consumed by adjust_roll_calendar()
@@ -175,6 +128,16 @@ def process_multiple_prices_single_instrument(
         roll_calendar, dict_of_futures_contract_closing_prices, roll_parameters
     )
 
+    print(
+        "Building multiple prices for %s with %d roll rows from %s to %s"
+        % (
+            instrument_code,
+            len(roll_calendar.index),
+            str(roll_calendar.index[0]) if len(roll_calendar.index) > 0 else "<empty>",
+            str(roll_calendar.index[-1]) if len(roll_calendar.index) > 0 else "<empty>",
+        )
+    )
+
     if adjust_calendar_to_prices:
         roll_calendar = adjust_roll_calendar(instrument_code, roll_calendar)
 
@@ -184,7 +147,9 @@ def process_multiple_prices_single_instrument(
     )
 
     multiple_prices = futuresMultiplePrices.create_from_raw_data(
-        roll_calendar, dict_of_futures_contract_closing_prices
+        roll_calendar,
+        dict_of_futures_contract_closing_prices,
+        instrument_code=instrument_code,
     )
 
     print(multiple_prices)
@@ -208,11 +173,8 @@ def adjust_roll_calendar(instrument_code, roll_calendar):
         instrument_code
     )
     dict_of_futures_contract_prices = dict_of_prices.final_prices()
-    roll_calendar = adjust_to_price_series(
-        roll_calendar, dict_of_futures_contract_prices
-    )
 
-    return roll_calendar
+    return adjust_to_price_series(roll_calendar, dict_of_futures_contract_prices)
 
 
 def add_phantom_row(

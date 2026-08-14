@@ -34,6 +34,7 @@ from sysproduction.reporting.data.costs import (
     get_combined_df_of_costs,
     adjust_df_costs_show_ticks,
 )
+from sysproduction.data.config import get_list_of_reporting_instruments_given_config
 from sysproduction.reporting.data.pricechanges import marketMovers
 from sysproduction.reporting.data.trades import (
     get_recent_broker_orders,
@@ -356,10 +357,9 @@ class reportingApi(object):
         return table_corr
 
     def get_potential_unconfigured_duplicates(self) -> table:
-        diag_prices = diagPrices(self.data)
         pairs = generate_duplicate_pairs(self.data)
 
-        all_instruments = diag_prices.get_list_of_instruments_in_multiple_prices()
+        all_instruments = self._list_of_all_instruments()
         unconfigured = [
             item
             for item in all_instruments
@@ -672,6 +672,14 @@ class reportingApi(object):
     def _list_of_all_instruments(self):
         diag_prices = diagPrices(self.data)
         list_of_instruments = diag_prices.get_list_of_instruments_in_multiple_prices()
+        reporting_instruments = get_list_of_reporting_instruments_given_config(
+            self.data.config
+        )
+        if reporting_instruments:
+            reporting_set = set(reporting_instruments)
+            list_of_instruments = [
+                instrument for instrument in list_of_instruments if instrument in reporting_set
+            ]
 
         return list_of_instruments
 

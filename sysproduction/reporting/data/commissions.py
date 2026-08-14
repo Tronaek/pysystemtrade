@@ -7,6 +7,7 @@ from sysproduction.data.broker import dataBroker
 from sysproduction.data.contracts import dataContracts
 from sysobjects.contracts import futuresContract
 from sysdata.data_blob import dataBlob
+from sysproduction.data.config import get_list_of_reporting_instruments_given_config
 from sysdata.config.instruments import get_list_of_untradeable_instruments_in_config
 
 error_getting_costs = currencyValue(currency="Error", value=0)
@@ -186,6 +187,12 @@ def get_instrument_list(data: dataBlob) -> list:
     list_of_instruments = (
         db.broker_futures_contract_price_data.get_list_of_instrument_codes_with_merged_price_data()
     )
+    reporting_instruments = get_list_of_reporting_instruments_given_config(data.config)
+    if reporting_instruments:
+        reporting_set = set(reporting_instruments)
+        list_of_instruments = [
+            instrument for instrument in list_of_instruments if instrument in reporting_set
+        ]
 
     return list_of_instruments
 

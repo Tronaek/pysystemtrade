@@ -44,6 +44,12 @@ class stackHandlerChecks(stackHandlerCore):
     def log_and_lock_position_break(self, contract: futuresContract):
         instrument_code = contract.instrument_code
         data_locks = dataLocks(self.data)
+        if not self.data.config.get_element_or_default("enable_instrument_locks", False):
+            self.log.critical(
+                "Break for %s: instrument locks disabled (enable_instrument_locks=False), not locking"
+                % (str(contract))
+            )
+            return None
         if data_locks.is_instrument_locked(instrument_code):
             # already locked
             return None

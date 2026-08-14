@@ -60,6 +60,7 @@ contractAndPriceInfo = namedtuple(
 def create_multiple_price_stack_from_raw_data(
     roll_calendar,
     dict_of_futures_contract_closing_prices: dictFuturesContractFinalPrices,
+    instrument_code: str | None = None,
 ):
     """
     # NO TYPE CHECK FOR ROLL_CALENDAR AS WOULD CAUSE CIRCULAR IMPORT
@@ -85,6 +86,17 @@ def create_multiple_price_stack_from_raw_data(
         roll_calendar_with_roll_index.iterate_roll()
 
     # end of loop
+    if len(all_price_data_stack) == 0:
+        roll_calendar_rows = len(roll_calendar.index)
+        roll_calendar_start = roll_calendar.index[0] if roll_calendar_rows > 0 else None
+        roll_calendar_end = roll_calendar.index[-1] if roll_calendar_rows > 0 else None
+        instrument_label = instrument_code if instrument_code is not None else "<unknown>"
+        raise Exception(
+            "No multiple-price rows could be built for %s. Roll calendar rows=%d start=%s end=%s. "
+            "Likely cause: no overlapping current/next prices for any roll date in the calendar."
+            % (instrument_label, roll_calendar_rows, str(roll_calendar_start), str(roll_calendar_end))
+        )
+
     all_price_data_stack = pd.concat(all_price_data_stack, axis=0)
 
     return all_price_data_stack

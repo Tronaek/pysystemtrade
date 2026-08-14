@@ -44,6 +44,7 @@ from sysproduction.data.prices import (
     get_current_price_of_instrument,
     diagPrices,
 )
+from sysproduction.data.config import get_list_of_reporting_instruments_given_config
 
 
 ## only used for reporting purposes
@@ -156,6 +157,13 @@ def get_instrument_risk_table(
         instrument_list = get_instruments_with_positions_all_strategies(data)
     else:
         instrument_list = get_list_of_instruments()
+
+    reporting_instruments = get_list_of_reporting_instruments_given_config(data.config)
+    if reporting_instruments:
+        reporting_set = set(reporting_instruments)
+        instrument_list = [
+            instrument for instrument in instrument_list if instrument in reporting_set
+        ]
 
     if exclude_instruments is not arg_not_supplied:
         instrument_list = list_difference(instrument_list, exclude_instruments)
@@ -487,6 +495,12 @@ def get_perc_of_capital_position_size_across_instruments_for_strategy(
 
 def get_correlation_matrix_all_instruments(data) -> correlationEstimate:
     instrument_list = get_instruments_with_positions_all_strategies(data)
+    reporting_instruments = get_list_of_reporting_instruments_given_config(data.config)
+    if reporting_instruments:
+        reporting_set = set(reporting_instruments)
+        instrument_list = [
+            instrument for instrument in instrument_list if instrument in reporting_set
+        ]
     if len(instrument_list) == 0:
         return correlationEstimate(np.empty((0, 0)), columns=[])
 

@@ -33,6 +33,11 @@ mongo_dump_all: True
 echo_directory: 'data.echos'
 offsystem_backup_options: '-av'
 #
+# If True, a broker-vs-database position break automatically locks the instrument until the break
+# clears, blocking new orders for it. Locks can prevent the system from trading its way back into
+# sync (e.g. after a transient break caused by a broker/gateway reconnect), so this defaults to False.
+enable_instrument_locks: False
+#
 # Interactive brokers
 ib_ipaddress: 127.0.0.1
 ib_port: 4001

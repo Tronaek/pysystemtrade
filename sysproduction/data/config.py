@@ -60,6 +60,23 @@ def get_list_of_stale_instruments_given_config(config) -> list:
     return stale_instruments
 
 
+def get_list_of_reporting_instruments_given_config(config) -> list:
+    include_lists = config.get_element_or_default("include_instrument_lists", {})
+    if not isinstance(include_lists, dict):
+        return []
+
+    reporting_instruments = include_lists.get("reporting_instruments", [])
+    if not isinstance(reporting_instruments, list):
+        return []
+
+    return [str(instrument).strip() for instrument in reporting_instruments if str(instrument).strip()]
+
+
+def get_list_of_reporting_instruments() -> list:
+    config = get_production_config()
+    return get_list_of_reporting_instruments_given_config(config)
+
+
 def get_list_of_stale_strategies() -> list:
     config = get_production_config()
     return config.get_element_or_default("stale_strategies", [])
